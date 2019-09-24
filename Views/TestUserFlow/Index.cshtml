@@ -1,0 +1,448 @@
+@{
+    ViewData["Title"] = "Home Page";
+    var targetApiUrl = (string) ViewData["TargetApiUrl"];
+}
+
+<script src="https://code.jquery.com/jquery-3.3.1.min.js"
+        integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8="
+        crossorigin="anonymous"></script>
+
+<style>
+    #setup {
+        max-width: 650px;
+        padding: 10px;
+        display: none;
+    }
+
+    #setup span {
+        display: block;
+        font-weight: bold;
+    }
+
+    #setup input{
+        width: 350px;
+        display: block;
+        margin-bottom: 10px;
+    }
+    .section {
+        margin: 12px;
+    }
+    
+    #documents-list {
+        margin: 15px;
+    }
+
+    img {
+        max-width: 100px;
+        max-height: 100px;
+    }
+
+    #deposit-result {
+        margin: 15px;
+    }
+
+</style>
+
+
+<main>
+    <h1>User flow</h1>
+    <div id="setup" class="section">
+        <h3>API setup urls</h3>
+        <div>
+            <span>
+                Load user profile:
+            </span>
+            <input type="text" id="url-load-profile" value="deposit/user?userId=${userId}" />
+        </div>
+        <div>
+            <span>
+                Upload user identity:
+            </span>
+            <input type="text" id="url-upload-id" value="deposit/${userId}/document" />
+        </div>
+        <div>
+            <span>
+                Initiate deposit:
+            </span>
+            <input type="text" id="url-initiate-deposit" value="deposit/${userId}" />
+        </div>
+        <div>
+            <span>
+                Complete deposit:
+            </span>
+            <input type="text" id="url-complete-deposit" value="deposit/${userId}/${paymentId}" />
+        </div>
+        <div>
+            <span>
+                Report:
+            </span>
+            <input type="text" id="url-report" value="deposit-summary?date=${date}" />
+        </div>
+        
+
+        <script>
+            function GetLoadProfileUrl() {
+                return FormatUrl($('#url-load-profile').val());
+            }
+
+            function GetUploadUrl() {
+                return FormatUrl($('#url-upload-id').val());
+            }
+
+            function GetInitiateDepositUrl() {
+                return FormatUrl($('#url-initiate-deposit').val());
+            }
+
+            function GetCompleteDepositUrl() {
+                return FormatUrl($('#url-complete-deposit').val()).replace('${paymentId}', $('#paymentId').val());
+            }
+
+            function GetReportUrl() {
+                return FormatUrl($('#url-report').val()).replace('${date}', $('#date').val());
+            }
+
+
+
+            
+            function FormatUrl(url) {
+                var userId = $('#userId').val();
+                return '@targetApiUrl'+url.replace("${userId}", userId);
+            }
+        </script>
+
+    </div>
+    
+
+    <h2>Step 1. Load user profile</h2>
+    <div class="section">
+    <div>
+        User ID:
+        <input type="text" data-val="true"
+               data-val-required="The User Id is required."
+               id="userId" name="userId" value="123"/>
+
+        <input type="button" value="load profile" id="btn-load-profile"/>
+    </div>
+
+
+    <div id="user-profile">
+        <input type="text" name="FirstName" id="FirstName" value="" />
+        <input type="text" name="LastName" id="LastName" value="" />
+        <input type="text" name="DOB" id="DOB" value="" />
+        <input type="text" name="SSN" id="SSN" value="" />
+        <input type="checkbox" name="SSNRecorded" id="SSNRecorded" />
+    </div>
+
+    <script>
+        $(document).ready(function() {
+            $('#user-profile').hide();
+            $('#btn-load-profile').click(function() {
+                var userId = $('#userId').val();
+                var url = GetLoadProfileUrl();
+                $.get(url,
+                    function(response) {
+                        console.log(`load user url: ${url} => `, response);
+                        $('#FirstName').val(response.firstName);
+                        $('#LastName').val(response.lastName);
+                        $('#DOB').val(response.dob);
+                        if (response.ssnRecorded)
+                            $('#checkbox').attr('checked', 'checked');
+                        else
+                            $('#checkbox').attr('checked', '');
+                        $('#user-profile').show();
+                    }
+                );
+            });
+        });
+    </script>
+    </div>
+
+    <h2>Step 2. Upload identity document</h2>
+
+    <div id="user-identity" class="section">
+        
+            <input type="file" id="file-identity-document" name="file"/>
+            <input type="button" id="btn-upload-identity" name="upload" value="upload"/>
+        
+
+        <script>
+            $(document).ready(function() {
+                $('#btn-upload-identity').click(function() {
+                    var userId = $('#userId').val();
+
+                    const formData = new FormData();
+                    formData.append('userId', userId+'');
+                    formData.append('file', $('#file-identity-document')[0].files[0]);
+
+                    var url = GetUploadUrl();// `v1/deposit/${userId}/document`;
+
+                    $.ajax({
+                        url: url,
+                        data: formData,
+                        cache: false,
+                        contentType: false,
+                        processData: false,
+                        method: 'POST',
+                        success: function (response){
+                            console.log(`upload identity document ${url} => response: ${response}`);
+                            ViewDocuments();
+                        }
+                    });
+                });
+            });
+        </script>
+    </div>
+
+    <div id="user-documents" class="section">
+        <input type="button" value="view documents" id="btn-load-documents"/>
+        
+        <div id="documents-list">
+
+        </div>
+
+        <script>
+            $(document).ready(function() {
+                $('#btn-load-documents').click(ViewDocuments);
+            });
+
+            function ViewDocuments() {
+                const userId = $('#userId').val();
+                const formData = new FormData();
+                formData.append('userId', userId);
+                var url = `/v1/deposit/${userId}/documents`;
+                $.ajax({
+                    url: url,
+                    data: formData,
+                    cache: false,
+                    contentType: false,
+                    processData: false,
+                    method: 'GET',
+                    success: function (response) {
+                        if (typeof response === 'string' && response.startsWith('<!DOCTYPE html>')) {
+                            console.error(`view documents ${url} => FAILED`,response);
+                            return;
+                        }
+
+                        console.log(`view documents ${url} => response: #${response.length} items`, response);
+                        $('#documents-list').html('');
+
+                        if (response.length < 1) {
+                            $('#documents-list').html('<h4>No documents</h4>');
+                        }
+
+                        const userId = $('#userId').val();
+                        for (var i = 0; i < response.length; i++) {
+                            var fileName = response[i];
+                            var img = `<img src="/v1/deposit/${userId}/getdocument/${fileName}"/>`;
+                            var downloadLink = `<a href="/v1/deposit/${userId}/getdocument/${fileName}">file ${i}: ${img}</a>`;
+                            
+                            $('#documents-list').append(`<div>${downloadLink} </div>`);
+                        }
+                    }
+                });
+            }
+        </script>
+
+    </div>
+    
+
+    <h2>Step 3. Initiate deposit</h2>
+
+    <div id="initiate-deposit" class="section">
+        <div>
+            Amount: <input type="number" min="1" step="any" id="amount"/>
+        </div>
+        <div>
+            <input type="button" value="initiate deposit" id="btn-initiate-deposit"/>
+        </div>
+        <div id="deposit-result">
+            <div id="response-approved">
+                Payment ID: <input type="text" id="paymentId" readonly="readonly" value="">
+            </div>
+            <div id="response-rejected">
+                <div>
+                    Message: <span id="response-message"></span>
+                </div>
+                <div>
+
+                    Deposit Limit:
+                    <input type="text" id="response-data-limit" readonly="readonly" value="">
+                </div>
+                <div>
+                    Total Pending: <input type="text" id="response-data-total" readonly="readonly" value="">
+                </div>
+            </div>
+        </div>
+
+        <script>
+            $(document).ready(function () {
+                $('#deposit-result').hide();
+
+                $('#btn-initiate-deposit').click(function() {
+
+                    var url = GetInitiateDepositUrl();
+
+                    var userId = $('#userId').val();
+                    var ssn = $('#SSN').val();
+                    var amount = $('#amount').val();
+                    const formData = new FormData();
+                    formData.append('userId', userId);
+                    formData.append('amount', amount);
+                    if(ssn.length > 0)
+                        formData.append('SSN', ssn);
+
+
+                    $.ajax({
+                        url: url,
+                        data: formData,
+                        cache: false,
+                        contentType: false,
+                        processData: false,
+                        method: 'POST',
+                        success: function (response) {
+                            console.log(`make deposit ${url} => response`, response);
+
+                            $('#response-approved').hide();
+                            $('#response-rejected').hide();
+                            $('#paymentId').val('');
+
+                            if (response.success === true) {
+                                $('#response-approved').show();
+                                $('#paymentId').val(response.data.paymentId);
+                            }
+
+                            if (response.success === false) {
+                                $('#response-message').html(response.message);
+                                $('#response-data-limit').val(response.data.depositLimit);
+                                $('#response-data-total').val(response.data.totalPending);
+                                $('#response-rejected').show();
+                            }
+
+                            $('#deposit-result').show();
+                        }
+                    });
+                });
+            });
+        </script>
+
+    </div>
+    
+    <h2>Step 4. Complete deposit</h2>
+    
+    <div id="complete-deposit" class="section">
+        <div>
+            Cashier initial: <input type="text" id="initials" value="JS"/>
+        </div>
+        <div>
+            <input type="button" value="Complete" id="btn-complete-deposit" style="background-color: green" />
+            <input type="button" value="Cancel" id="btn-cancel-deposit" style="background-color: darkred"/>
+        </div>
+
+        <div id="complete-deposit-result">
+        </div>
+
+        <script>
+            $(document).ready(function () {
+                $('#deposit-result').hide();
+
+                $('#btn-complete-deposit').click(function () {
+                    CompleteDeposit('Completed');
+                });
+                $('#btn-cancel-deposit').click(function () {
+                    CompleteDeposit('Cancelled');
+                });
+            });
+
+            function CompleteDeposit(status) {
+                const url = GetCompleteDepositUrl();
+
+                const userId = $('#userId').val();
+                const paymentId = $('#paymentId').val();
+                const initial = $('#initials').val();
+                const formData = new FormData();
+                formData.append('userId', userId);
+                formData.append('paymentId', paymentId);
+                formData.append('initial', initial);
+                formData.append('status', status);
+
+                var data = {
+                    userId: $('#userId').val(),
+                    paymentId: $('#paymentId').val(),
+                    initial: $('#initials').val(),
+                    status: status
+                };
+                
+                $.ajax({
+                    url: url,
+                    data: data,
+                    cache: false,
+                    contentType: false,
+                    processData: false,
+                    method: 'POST',
+                    success: function (response) {
+                        var request = `Complete deposit request [status:${status};initial:${initial}] to ${url}`;
+                        if (typeof response === 'string' && response.startsWith('<!DOCTYPE html>')) {
+                            $('#complete-deposit-result').html(`${request} => FAILED for more details see response obj dump in console`);
+                            console.error(`complete deposit => FAILED [most likely routing failed to resolve url: ${url}]`, response);
+                            return;
+                        }
+                        if (response === '' || response === 'OK') {
+                            $('#complete-deposit-result').html(`${request} => OK`);
+                        } else {
+                            $('#complete-deposit-result').html(`${request} => OK [for more details check console]`);
+                            console.info("Complete deposit response:", response);
+                        }
+                        
+                        $('#complete-deposit-result').show();
+                    }
+                });
+            }
+        </script>
+
+    </div>
+
+    <h2>Step 5. Deposit Summary</h2>
+    <div id="deposit-summary" class="section">
+        <div>
+            <input type="date" name="date" id="date" />
+            <input type="button" value="Report" id="btn-report" />
+
+            <div id="report">
+
+            </div>
+
+                <script>
+                    $(document).ready(function () {
+                        $('#deposit-result').hide();
+
+                        $('#btn-report').click(function () {
+                            var url = GetReportUrl();
+
+                            $.ajax({
+                                url: url,
+                                cache: false,
+                                contentType: false,
+                                processData: false,
+                                method: 'GET',
+                                success: function (response) {
+                                    $('#report').html('');
+                                    if (!response || (typeof response === 'string' && response.startsWith('<!DOCTYPE html>'))) {
+                                        console.error(`get summary ${url} => FAILED`,response);
+                                        return;
+                                    }
+                                    
+                                    if (response.length < 1) {
+                                        $('#report').html('Reponse length is 0');
+                                    }
+
+                                    $('#report').html('Reponse is OK, for details see console');
+                                    console.info('Report ' + $('#date').val(),response);
+                                }
+                            });
+                        });
+                    });
+                </script>
+            </div>
+    </div>
+
+</main>
